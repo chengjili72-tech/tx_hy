@@ -40,61 +40,59 @@ DOCKER_BUILDKIT=1 docker build \
   -t tx_hy:9.1.0-relase . 2>&1 | tee build-9.1.0-relase.log
 ```
 
-## 950-PR 容器启动脚本（候选版，非最终版）
+## 950-PR 容器启动说明
 
-本次按用户现场命令整理。**启动配置尚待用户实机验证**，不会因原镜像基本验证通过而自动视为已验证。脚本名：[run-950-PR.sh](run-950-PR.sh)。
-
-在仓库根目录执行：
+将以下脚本保存为 `run_950_PR.sh`：
 
 ```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
 export DOCKER_HOST=unix:///tmp/docker-test/docker.sock
-# 已做过镜像 tag 可跳过
-docker tag tx_hy:cann9.1.0-py3.13.16 tx_hy:9.1.0-relase
 
-# 可先查看展开的命令，不启动容器
-bash versions/9.1.0-relase/run-950-PR.sh --dry-run
+IMAGE="tx_hy:cann9.1.0-py3.13.16"
+CONTAINER_NAME="hg_test_cache"
 
-# 后台启动
-bash versions/9.1.0-relase/run-950-PR.sh
+# 补充当前可见的 NPU 计算设备
+NPU_ARGS=()
+for dev in /dev/davinci[0-9]*; do
+    if [ -c "$dev" ]; then
+        NPU_ARGS+=(--device="$dev")
+    fi
+done
 
-# 进入容器
+docker run --name "$CONTAINER_NAME" \
+    --ipc=host -it -d \
+    --net=host \
+    --shm-size=500g \
+    --privileged=true \
+    --ulimit memlock=-1:-1 \
+    -w /workspace \
+    --device=/dev/davinci_manager \
+    --device=/dev/hisi_hdc \
+    --device=/dev/devmm_svm \
+    "${NPU_ARGS[@]}" \
+    --entrypoint=bash \
+    -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -v /usr/local/dcmi:/usr/local/dcmi \
+    -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+    -v /usr/local/sbin:/usr/local/sbin \
+    -v /home:/home \
+    -v /tmp:/tmp \
+    -v /taijifs_zwfy8:/taijifs_zwfy8 \
+    "$IMAGE" \
+    -c 'source /opt/tx_hy/env.sh && exec bash -i'
+
+echo "进入容器：docker exec -it $CONTAINER_NAME bash"
+```
+
+启动并进入容器：
+
+```bash
+bash run_950_PR.sh
+export DOCKER_HOST=unix:///tmp/docker-test/docker.sock
 docker exec -it hg_test_cache bash
 ```
-
-可覆盖名称和镜像，不必编辑脚本：
-
-```bash
-CONTAINER_NAME=hg_test_cache_950pr IMAGE=tx_hy:9.1.0-relase \
-  bash versions/9.1.0-relase/run-950-PR.sh
-```
-
-保留用户提供的 `--ipc host -it -d --net=host --shm-size=500g --privileged=true`、工作目录 `/data` 和全部挂载；挂载默认读写。补充：
-
-- 默认镜像名 `tx_hy:9.1.0-relase`，默认容器名 `hg_test_cache`。
-- 当前环境可见的数字 NPU 节点 `/dev/davinci[0-9]*`；保留三个显式管理设备。privileged 本身也会扩大设备访问，显式设备列表用于记录现场配置，不代表仅开放这些设备。
-- `--ulimit memlock=-1:-1`，供需要锁页内存的运行场景使用。
-- 覆盖 ENTRYPOINT 为 bash 后显式执行 `source /opt/tx_hy/env.sh && exec bash -i`，初始化 Conda/CANN 再保持交互 Shell。
-- 容器标签 `tx_hy.launch-profile=950-PR`、`tx_hy.validation=pending`，保留待验证标识。
-
-**共享内存说明：** `--ipc=host` 共享 daemon 所在环境的 IPC 和 /dev/shm；保留的 `--shm-size=500g` 不会把宿主的共享内存改成 500GB。若 daemon 在外层容器中，实际受外层容器环境约束。验证时以 `df -h /dev/shm` 为准。
-
-脚本面向当前本地独立 daemon：检查挂载源和管理设备存在，不自动创建空目录，也不删除同名容器。缺少 /data1 等目录时请按真实现场调整挂载。不会挂载宿主整个 /usr/local/Ascend，以免覆盖镜像里的 CANN。/usr/local/dcmi、npu-smi、/usr/local/sbin 及其他路径按用户给定保持原样。
-
-容器内先检查：
-
-```bash
-python --version
-echo "$CONDA_PREFIX"
-echo "$ASCEND_HOME_PATH"
-df -h /dev/shm
-ulimit -l
-npu-smi info
-python -c 'import torch, torch_npu; print(torch.__version__); print(torch_npu.__version__); print(torch.randn(3,4).npu())'
-```
-
-不自动添加未经确认的通信配置/URMA 库路径；后续以用户实测后的最终命令更新。顶层挂载 `/taijifs_zwfy8` 已包含现场代码路径；可通过该路径运行仓库的 smoke_test.py。
-
-已停止的容器可用 `docker start hg_test_cache` 启动，再用 `docker exec -it hg_test_cache bash` 进入。首次启动异常可查看 `docker logs hg_test_cache`。
 
 ## 保存与恢复
 
