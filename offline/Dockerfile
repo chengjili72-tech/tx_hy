@@ -195,7 +195,13 @@ report = Path("/opt/tx_hy/build-info")
 (report / "pip-check-with-cann.txt").write_text(result.stdout)
 (report / "pip-check-with-cann.exit-code").write_text(str(result.returncode) + "\n")
 print(result.stdout, end="", flush=True)
+# Exact metadata issues observed with CANN 9.1.0 and 9.2.0.
+# Do not suppress arbitrary new errors or change installed framework packages.
 known = {
+    "cannsim 0.1.0 requires plotly, which is not installed.",
+    "mindstudio-kpp 26.2.0 requires plotly, which is not installed.",
+    "msboost 26.2.0 requires colorlog, which is not installed.",
+    "msboost 26.2.0 requires pydantic, which is not installed.",
     "affinity-sched 26.1.0 requires argparse, which is not installed.",
     "mindstudio-kpp 26.1.0 requires plotly, which is not installed.",
     "ms-service-profiler 26.0.0 requires loguru, which is not installed.",
@@ -211,10 +217,14 @@ known = {
 }
 lines = {line.strip() for line in result.stdout.splitlines() if line.strip()}
 if result.returncode:
+    unexpected = lines - known
+    if unexpected:
+        print("ERROR: Unrecognized CANN pip-check issues:\n" +
+              "\n".join(sorted(unexpected)), flush=True)
     if (result.returncode != 1 or not lines or lines - known
             or os.environ.get("STRICT_CANN_PIP_CHECK") != "0"):
         raise SystemExit(result.returncode)
-    print("WARNING: Known CANN metadata issues remain; see pip-check-with-cann.txt. "
+    print("WARNING: Known CANN dependency/metadata issues remain; see pip-check-with-cann.txt. "
           "CANN profiling tools and te binary compatibility are NOT validated. "
           "Top-level imports do not establish NPU runtime compatibility.", flush=True)
 PY
