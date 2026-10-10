@@ -94,4 +94,19 @@ python /opt/tx_hy/smoke_test.py
 
 新增代码已做静态语法和构建脚本/轮子校验逻辑测试；未取得你的内部安装包，**未完成离线版真实镜像构建或 NPU 验证**。
 
-沿用在线基线的依赖检查策略：Conda pip check、te/tbe 顶层导入及核心版本匹配必须通过；原基线逐条列出的 12 个 CANN 已知问题只记录警告，新增问题会阻断构建。内部 CANN 可能改变工具包版本/依赖，因此出现新报告需要单独定位，不会自动全部忽略。
+沿用在线基线的依赖检查策略：Conda pip check、te/tbe 顶层导入及核心版本匹配必须通过；逐条列出的 CANN 已知问题只记录警告，未列出的新问题会阻断构建并显示具体条目。内部 CANN 可能改变工具包版本/依赖，因此出现新报告需要单独定位，不会自动全部忽略。
+
+## CANN 9.2.0 最终检查报错
+
+若日志显示 Conda `No broken requirements found`、`te/tbe` 顶层导入成功，但最终检查失败，先查看 `pip check` 的具体条目。9.2.0 实际日志新增了以下四条，现已加入离线版的精确告警名单：
+
+```text
+cannsim 0.1.0 requires plotly, which is not installed.
+mindstudio-kpp 26.2.0 requires plotly, which is not installed.
+msboost 26.2.0 requires colorlog, which is not installed.
+msboost 26.2.0 requires pydantic, which is not installed.
+```
+
+这项修改只允许上述已定位问题以告警形式保留，不补装这些依赖，不代表相关 CANN 工具可用。`STRICT_CANN_PIP_CHECK=1` 仍会让所有 CANN 检查错误阻断构建。Conda 检查、顶层导入、核心版本检查仍必须通过。
+
+拉取包含修复的分支后重新执行原来的 `linshi.sh` 即可，安装包路径和参数无需修改。保留构建缓存，不加 `--no-cache`；本次 Dockerfile 修改位于最终检查，之前的安装层可继续复用。
