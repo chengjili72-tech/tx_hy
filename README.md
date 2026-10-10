@@ -4,7 +4,14 @@
 
 ## 验证状态
 
-**正式镜像最终构建与 NPU 真机运算尚待验证。** 2026-10-10 用户已在目标环境完成安装层并导出 `tx_hy:inspect`；排除 CANN 注入的 `PYTHONPATH` 后，Conda 的 `pip check` 通过，Python 3.13.16 下 `import te` 与 `import tbe` 成功。制作端只进行了静态检查，没有执行 Docker/NPU 验证。顶层导入成功不证明所有扩展、算子编译、训练及 profiling 工具兼容。
+**9.1.0-relase 已由用户构建成功并完成基本环境验证（2026-10-10）。**原有 CANN 工具依赖警告的范围不变，用户反馈不扩大解释为完整训练、通信或 profiling 验证。
+
+| 版本 | 文件 / 使用说明 | 状态 |
+|---|---|---|
+| 9.1.0-relase | [固定配方和命令](versions/9.1.0-relase/README.md) | 用户基本验证通过 |
+
+根目录 `Dockerfile` 与 `versions/9.1.0-relase/Dockerfile` 逐字节一致。`9.1.0-relase` 同名分支保留线上基线和发布命令（分支，不是 Git tag）。
+
 
 ## 环境配置
 
