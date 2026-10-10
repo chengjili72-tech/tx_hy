@@ -1,1 +1,146 @@
 # tx_hy
+
+面向 **x86_64 / Ascend 950** 的 hunyuan4_tenpu 开发环境。所有安装步骤均在根目录 `Dockerfile` 内，可单独使用该文件构建；不是复制已有 Conda 环境。
+
+## 验证状态
+
+**尚未执行完整 docker build 或 950 真机运行验证。** 制作环境没有 Docker/Podman 和 NPU。已进行 shell/Python 静态语法检查、安装源与指定包版本元数据核对。构建时的 `pip check` 与版本断言，以及本仓库的 `smoke_test.py`，只有在实际执行成功后才表示对应检查通过。
+
+## 环境配置
+
+| 项目 | 配置 |
+|---|---|
+| OS | `ubuntu:24.04`，不锁定 24.04.3 小版本 |
+| 架构 / 设备 | `linux/amd64` / Ascend 950 |
+| Conda | Miniforge（提供 conda；使用 conda-forge channel） |
+| 环境名 | `hunyuan4_tenpu` |
+| Python | **3.13.16**，普通 CPython cp313，非 free-threaded/debug 构建 |
+| CANN | **9.1.0 Toolkit + 950 ops + NNAL** |
+| torch | **2.10.0+cpu**，PyTorch CPU 源 |
+| torch_npu | **2.10.0.post6** |
+| Triton-Ascend | 按用户命令不固定版本；由安装源与依赖解析决定 |
+| TENPU | 从 GitCode 克隆默认分支，`pip install -e ... --no-build-isolation` |
+
+其他指定依赖：`torchvision==0.25.0`、`pillow==12.2.0`、`tokenizers==0.22.2`、`transformers==4.57.1`、`einops==0.8.2`、`pynvml==13.0.1`、`omegaconf==2.3.1`、`mbridge==0.15.1`、`pycryptodomex==3.23.0`；`orjson`、`numba`、`pycryptodome` 按用户流程不固定版本。CANN 前置依赖包含 `protobuf==3.20.0`、PyYAML、NumPy 等。
+
+`torchvision` 保留版本和 `--no-deps`，但明确从 PyTorch CPU 源安装，得到匹配 CPU Torch 的构建，避免默认 PyPI CUDA 构建引入 CUDA 动态库要求。`pip list` 可能显示 `0.25.0+cpu`，满足 `==0.25.0`。
+
+`PIP_CONSTRAINT=/opt/tx_hy/constraints.txt` 在镜像中持续生效，防止后续安装覆盖指定版本；如上游浮动依赖与这些版本冲突，构建会失败，而不会自动更换 Torch。未固定的版本及上游分支仍会变化，**这不是完全锁定的可复现环境**。
+
+## 安装顺序
+
+1. Ubuntu 编译工具、动态库和开发包。
+2. Miniforge，以及 Python 3.13.16 的 Conda 环境。
+3. 版本约束、CANN 所需 Python 依赖。
+4. 在线下载并安装 CANN Toolkit → 950 ops → NNAL，安装后删除 `.run` 包。
+5. 配置统一环境初始化脚本，包含 Conda、CANN、Bisheng、ATB 和宿主驱动库路径。
+6. 安装 Torch、torch_npu、Triton-Ascend、TENPU。
+7. 安装 angelptm_hy4 的依赖。
+8. `pip check`、框架版本断言、保存实际安装清单及 TENPU commit。
+
+仅安装用户列出的 angelptm_hy4 **依赖**；不包含业务代码、模型权重或数据，也不额外安装 ascend_deepep。
+
+## CANN 安装来源
+
+参考 [Ascend 官方 Dockerfile](https://github.com/Ascend/cann-container-image/blob/main/cann/9.1.0-950-ubuntu22.04-py3.12/Dockerfile)（制作时读取的文件 blob SHA：`569aa42439a2dc38c51c180eff7c758c57db9162`）。沿用其下载目录与安装参数 `--quiet --install --install-for-all`：
+
+```text
+https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.1.0/
+  Ascend-cann-toolkit_9.1.0_linux-x86_64.run
+  Ascend-cann-950-ops_9.1.0_linux-x86_64.run
+  Ascend-cann-nnal_9.1.0_linux-x86_64.run
+```
+
+这三个包的下载地址已返回 HTTP 200（2026-10-10）；未下载完整安装包，也未验证其在目标机上的安装结果。三个安装包总计约 4.4 GB，构建还需要 Conda、Python wheels、CANN 解包和 Docker 层空间；此前 `vfs` 存储驱动尤其需要预留空间。
+
+驱动与固件安装在宿主机。容器安装用户态 CANN，运行时使用宿主机匹配的驱动、设备与通信配置。不要将宿主机整个 `/usr/local/Ascend` 挂载到容器相同位置，这会覆盖镜像安装的 CANN。
+
+## 构建
+
+```bash
+git clone https://github.com/chengjili72-tech/tx_hy.git
+cd tx_hy
+
+# 沿用之前已启动的独立 Docker daemon；若用系统 Docker，请跳过此行。
+export DOCKER_HOST=unix:///tmp/docker-test/docker.sock
+docker info
+
+# Dockerfile 使用 heredoc，需 BuildKit / docker buildx。
+DOCKER_BUILDKIT=1 docker build --platform linux/amd64 --progress=plain \
+  -t tx_hy:cann9.1.0-py3.13.16 .
+```
+
+如果报 buildx 组件缺失，需要在执行构建的 Docker 客户端环境安装与之配套的 Buildx 插件。构建过程需要访问 Ubuntu apt、GitHub、conda-forge、PyPI、PyTorch CPU 源、华为源和 GitCode。没有在本仓库中关闭 HTTPS 证书验证。
+
+构建阶段不执行 `.npu()`，无需挂载 NPU。`pip check` 只能检查依赖声明，不能代替 ABI、CANN 算子或真机兼容性验证。
+
+## 启动与真机检查
+
+优先使用目标环境已经验证可用的 Ascend 容器启动方式。下面是常见设备节点的**单卡示例**；先确认目标机存在这些节点。950 的实际设备节点、宿主驱动路径与运行时挂载要求，以该机器的驱动部署为准。
+
+```bash
+npu-smi info
+ls -l /dev/davinci0 /dev/davinci_manager /dev/devmm_svm /dev/hisi_hdc
+
+docker run --rm -it --name tx_hy_test \
+  --device=/dev/davinci0 \
+  --device=/dev/davinci_manager \
+  --device=/dev/devmm_svm \
+  --device=/dev/hisi_hdc \
+  --shm-size=8g \
+  -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+  -v "$PWD":/opt/tx_hy_tests:ro \
+  tx_hy:cann9.1.0-py3.13.16 \
+  python /opt/tx_hy_tests/smoke_test.py
+```
+
+检测脚本检查关键模块导入、torch_npu 加法和 Triton-Ascend 向量加法。失败会返回非零状态；TENPU 此处只验证导入，不代表模型训练、多卡 HCCL 或长稳测试通过。多卡通信应复用你在 950 上验证过的设备、网络和通信库挂载配置，再单独执行集合通信测试。
+
+默认 `docker run ... IMAGE bash` 会初始化 Conda 与 CANN。已有容器执行非交互命令时，`docker exec` 不会重新运行 ENTRYPOINT，请显式使用：
+
+```bash
+docker exec <容器名> /usr/local/bin/tx-hy-entrypoint python -c \
+  'import torch, torch_npu; print(torch.randn(3, 4).npu())'
+```
+
+交互式 Bash 会通过 `/etc/bash.bashrc` 加载环境。手动初始化可用：
+
+```bash
+source /opt/tx_hy/env.sh
+```
+
+TENPU 源码保留在 `/opt/src/TransformerEngineNPU`，editable 安装依赖该目录，不要删除或用挂载覆盖它。
+
+## 查看本次构建使用的版本
+
+```bash
+docker run --rm tx_hy:cann9.1.0-py3.13.16 \
+  cat /opt/tx_hy/build-info/pip-freeze.txt
+docker run --rm tx_hy:cann9.1.0-py3.13.16 \
+  cat /opt/tx_hy/build-info/tenpu-commit.txt
+```
+
+`/opt/tx_hy/build-info/` 还保存 `pip-list.json`、`conda-explicit.txt`、`environment.yml`、系统/Python 版本及安装包 SHA256。SHA256 用于追溯下载内容；除非显式提供 Miniforge 的预期校验值，否则仅记录摘要不等于与官方摘要核验。
+
+后续需要固定已验证的 Triton-Ascend/TENPU 时，可传入实际版本和 commit：
+
+```bash
+DOCKER_BUILDKIT=1 docker build --platform linux/amd64 --progress=plain \
+  --build-arg TRITON_ASCEND_VERSION=<已验证版本> \
+  --build-arg TENPU_REF=<已验证commit或tag> \
+  -t tx_hy:validated .
+```
+
+上面尖括号是占位符，请替换后执行。Miniforge 也可使用 `MINIFORGE_URL` 与 `MINIFORGE_SHA256` 固定。完整复现还需要锁定基础镜像 digest、apt/Conda/pip 全部依赖及下载源。
+
+浮动 Git 分支和 pip 索引更新不会自动使 Docker 的 RUN 缓存失效。确实需要重新拉取时使用 `--no-cache`；这将重装整个环境。
+
+## 镜像共享
+
+```bash
+docker save tx_hy:cann9.1.0-py3.13.16 | gzip > tx_hy_cann9.1.0_py3.13.16.tar.gz
+# 在目标机器或另一个 daemon 中：
+gunzip -c tx_hy_cann9.1.0_py3.13.16.tar.gz | docker load
+```
+
+仓库只保存构建文件、说明和检查脚本，不上传 CANN 安装包、镜像归档或环境备份。
