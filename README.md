@@ -4,7 +4,7 @@
 
 ## 验证状态
 
-**尚未执行完整 docker build 或 950 真机运行验证。** 制作环境没有 Docker/Podman 和 NPU。已进行 shell/Python 静态语法检查、安装源与指定包版本元数据核对。构建时的 `pip check` 与版本断言，以及本仓库的 `smoke_test.py`，只有在实际执行成功后才表示对应检查通过。
+**正式镜像最终构建与 NPU 真机运算尚待验证。** 2026-10-10 用户已在目标环境完成安装层并导出 `tx_hy:inspect`；排除 CANN 注入的 `PYTHONPATH` 后，Conda 的 `pip check` 通过，Python 3.13.16 下 `import te` 与 `import tbe` 成功。制作端只进行了静态检查，没有执行 Docker/NPU 验证。顶层导入成功不证明所有扩展、算子编译、训练及 profiling 工具兼容。
 
 ## 环境配置
 
@@ -36,7 +36,7 @@
 5. 配置统一环境初始化脚本，包含 Conda、CANN、Bisheng、ATB 和宿主驱动库路径。
 6. 安装 Torch、torch_npu、Triton-Ascend、TENPU。
 7. 安装 angelptm_hy4 的依赖。
-8. `pip check`、框架版本断言、保存实际安装清单及 TENPU commit。
+8. Conda 依赖检查、CANN 顶层导入、完整依赖检查报告、框架版本断言，保存实际安装清单及 TENPU commit。
 
 仅安装用户列出的 angelptm_hy4 **依赖**；不包含业务代码、模型权重或数据，也不额外安装 ascend_deepep。
 
@@ -51,7 +51,7 @@ https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.1.0/
   Ascend-cann-nnal_9.1.0_linux-x86_64.run
 ```
 
-这三个包的下载地址已返回 HTTP 200（2026-10-10）；未下载完整安装包，也未验证其在目标机上的安装结果。三个安装包总计约 4.4 GB，构建还需要 Conda、Python wheels、CANN 解包和 Docker 层空间；此前 `vfs` 存储驱动尤其需要预留空间。
+制作端检查这三个地址返回 HTTP 200；用户后续已完成包含这些安装步骤的构建层（2026-10-10），运行兼容性仍待真机验证。三个安装包总计约 4.4 GB，构建还需要 Conda、Python wheels、CANN 解包和 Docker 层空间；此前 `vfs` 存储驱动尤其需要预留空间。
 
 驱动与固件安装在宿主机。容器安装用户态 CANN，运行时使用宿主机匹配的驱动、设备与通信配置。不要将宿主机整个 `/usr/local/Ascend` 挂载到容器相同位置，这会覆盖镜像安装的 CANN。
 
@@ -66,13 +66,38 @@ export DOCKER_HOST=unix:///tmp/docker-test/docker.sock
 docker info
 
 # Dockerfile 使用 heredoc，需 BuildKit / docker buildx。
-DOCKER_BUILDKIT=1 docker build --platform linux/amd64 --progress=plain \
-  -t tx_hy:cann9.1.0-py3.13.16 .
+set -o pipefail
+DOCKER_BUILDKIT=1 docker build \
+  --network=host \
+  --platform linux/amd64 \
+  --build-arg HTTP_PROXY="${http_proxy:-${HTTP_PROXY:-}}" \
+  --build-arg HTTPS_PROXY="${https_proxy:-${HTTPS_PROXY:-}}" \
+  --build-arg ALL_PROXY="${all_proxy:-${ALL_PROXY:-}}" \
+  --build-arg NO_PROXY="${no_proxy:-${NO_PROXY:-}}" \
+  --progress=plain \
+  -t tx_hy:cann9.1.0-py3.13.16 . \
+  2>&1 | tee build.log
 ```
 
 如果报 buildx 组件缺失，需要在执行构建的 Docker 客户端环境安装与之配套的 Buildx 插件。构建过程需要访问 Ubuntu apt、GitHub、conda-forge、PyPI、PyTorch CPU 源、华为源和 GitCode。没有在本仓库中关闭 HTTPS 证书验证。
 
 构建阶段不执行 `.npu()`，无需挂载 NPU。`pip check` 只能检查依赖声明，不能代替 ABI、CANN 算子或真机兼容性验证。
+
+## CANN 依赖检查的范围与限制
+
+CANN 的 set_env.sh 将 `/usr/local/Ascend/cann-9.1.0/python/site-packages` 加入 PYTHONPATH。直接运行 pip check 会同时检查这些厂商包和 Conda 包。本次检查结果：
+
+- Conda 环境：`env -u PYTHONPATH python -m pip check` 通过。
+- CANN te 0.4.0：WHEEL 标签为 cp311-cp311-linux_x86_64；RECORD 未列出动态库，te/tbe 顶层导入成功。尚不能确认标签是否不准确，不能据此声称二进制或完整运行兼容。
+- affinity-sched / mindstudio-kpp / ms-service-profiler：存在已观察到的缺包和 pandas 版本冲突，**这些问题尚未修复**。使用相关工具前须单独补齐兼容依赖并验证。
+
+默认构建要求 Conda 检查、te/tbe 顶层导入和框架版本断言通过；完整 pip check 仅对 Dockerfile 中逐条列出的 12 条已观察到的 CANN 问题给出警告并保存报告。新增或变化的错误仍会使构建失败。没有卸载 CANN 包、改写 WHEEL 标签或改变 Python 版本。
+
+如需完整 pip check 零报错才能生成镜像，在上述构建命令增加 `--build-arg STRICT_CANN_PIP_CHECK=1`，当前已知问题仍会使该模式失败。
+
+报告位于 `/opt/tx_hy/build-info/pip-check-conda.txt`、`pip-check-with-cann.txt` 和 `pip-check-with-cann.exit-code`。不要将默认构建成功描述为全部 CANN 工具已通过验证。
+
+已确认的网络问题：独立 daemon 缺少 bridge 时需 `--network=host`；当前终端能通过代理联网，但构建 RUN 不自动继承终端代理，需要上述四个代理参数。代理地址不写入 Dockerfile。
 
 ## 启动与真机检查
 
