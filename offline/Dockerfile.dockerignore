@@ -1,0 +1,7 @@
+**
+!offline/
+!offline/Dockerfile
+!offline/Dockerfile.dockerignore
+!offline/validate_wheels.py
+!offline/check_versions.py
+!offline/smoke_test.py

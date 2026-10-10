@@ -1,0 +1,7 @@
+*.run
+*.whl
+*.tar
+*.tar.gz
+*.log
+__pycache__/
+offline-packages/
