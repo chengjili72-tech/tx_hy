@@ -107,6 +107,89 @@ CANN 的 set_env.sh 将 `/usr/local/Ascend/cann-9.1.0/python/site-packages` 加�
 
 已确认的网络问题：独立 daemon 缺少 bridge 时需 `--network=host`；当前终端能通过代理联网，但构建 RUN 不自动继承终端代理，需要上述四个代理参数。代理地址不写入 Dockerfile。
 
+## 950-PR 容器启动说明（CANN 9.2.0）
+
+将以下脚本保存为 `run_950_PR.sh`。使用镜像 `tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261012`，连接 `/home/docker-test/docker.sock`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DOCKER_HOST=unix:///home/docker-test/docker.sock
+
+IMAGE="tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261012"
+CONTAINER_NAME="tx_hy_tenpu9.2.0_20261012"
+
+# 补充当前可见的 NPU 计算设备
+NPU_ARGS=()
+for dev in /dev/davinci[0-9]*; do
+    if [ -c "$dev" ]; then
+        NPU_ARGS+=(--device="$dev")
+    fi
+done
+
+docker run --name "$CONTAINER_NAME" \
+    --ipc=host -it -d \
+    --net=host \
+    --shm-size=500g \
+    --privileged=true \
+    --ulimit memlock=-1:-1 \
+    -w /workspace \
+    --device=/dev/davinci_manager \
+    --device=/dev/hisi_hdc \
+    --device=/dev/devmm_svm \
+    "${NPU_ARGS[@]}" \
+    --entrypoint=bash \
+    -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -v /usr/local/dcmi:/usr/local/dcmi \
+    -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+    -v /usr/local/sbin:/usr/local/sbin \
+    -v /home:/home \
+    -v /tmp:/tmp \
+    -v /taijifs_zwfy8:/taijifs_zwfy8 \
+    -v /taijifs_zwfy:/taijifs_zwfy \
+    -v /taijifs_zwfy8:/apdcephfs_zwfy8 \
+    -v /taijifs_zwfy:/apdcephfs_zwfy \
+    -v /apdcephfs_jn2:/apdcephfs_jn2 \
+    -v /cfs_hy_aide:/cfs_hy_aide \
+    -v /apdcephfs_zwfy10:/apdcephfs_zwfy10 \
+    -v /apdcephfs_zwfy6:/apdcephfs_zwfy6 \
+    -v /apdcephfs_zwfy2:/apdcephfs_zwfy2 \
+    -v /apdcephfs_zwfy11:/apdcephfs_zwfy11 \
+    -v /apdcephfs_zwfy14:/apdcephfs_zwfy14 \
+    -v /apdcephfs_zwfy5:/apdcephfs_zwfy5 \
+    -v /apdcephfs_zwfy3:/apdcephfs_zwfy3 \
+    -v /apdcephfs_nj11:/apdcephfs_nj11 \
+    -v /apdcephfs_nj8:/apdcephfs_nj8 \
+    -v /apdcephfs_jn4:/apdcephfs_jn4 \
+    -v /apdcephfs_jn5:/apdcephfs_jn5 \
+    -v /apdcephfs_nj12:/apdcephfs_nj12 \
+    -v /apdcephfs_nj2:/apdcephfs_nj2 \
+    -v /apdcephfs_nj4:/apdcephfs_nj4 \
+    -v /apdcephfs_nj9:/apdcephfs_nj9 \
+    -v /apdcephfs_jn:/apdcephfs_jn \
+    -v /apdcephfs_nj10:/apdcephfs_nj10 \
+    -v /apdcephfs_jn3:/apdcephfs_jn3 \
+    -v /apdcephfs_nj3:/apdcephfs_nj3 \
+    -v /apdcephfs_wzc1:/apdcephfs_wzc1 \
+    -v /taijifs_wzc3:/taijifs_wzc3 \
+    -v /apdcephfs_wzc2:/apdcephfs_wzc2 \
+    "$IMAGE" \
+    -c 'source /opt/tx_hy/env.sh && exec bash -i'
+
+echo "进入容器：docker exec -it $CONTAINER_NAME bash"
+```
+
+启动并进入容器：
+
+```bash
+bash run_950_PR.sh
+export DOCKER_HOST=unix:///home/docker-test/docker.sock
+docker exec -it tx_hy_tenpu9.2.0_20261012 bash
+```
+
+`--ipc=host` 下共享内存容量以 daemon 所在环境为准，可在容器内执行 `df -h /dev/shm` 查看。脚本中 `/apdcephfs_jn2` 挂载保留一次。
+
 ## 启动与真机检查
 
 优先使用目标环境已经验证可用的 Ascend 容器启动方式。下面是常见设备节点的**单卡示例**；先确认目标机存在这些节点。950 的实际设备节点、宿主驱动路径与运行时挂载要求，以该机器的驱动部署为准。
