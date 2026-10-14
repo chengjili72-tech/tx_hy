@@ -1,5 +1,7 @@
 # Mac 通过跳板机访问 code-server
 
+> **注意：跳板环境必须使用个人 CVM，不要使用堡垒机。**
+
 将下文 `YOUR_USER`、`YOUR_SERVER_IP`、`YOUR_SSH_PORT` 和 `/path/to/project` 替换为自己的配置。`127.0.0.1` 是本地回环地址，保持不变。
 
 访问链路：Mac 浏览器 → VS Code 端口转发 → 跳板环境 18080 → 目标服务器 8080。
