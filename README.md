@@ -109,7 +109,7 @@ CANN 的 set_env.sh 将 `/usr/local/Ascend/cann-9.1.0/python/site-packages` 加�
 
 ## 950-PR 容器启动说明（CANN 9.2.0）
 
-将以下脚本保存为 `run_950_PR.sh`。使用镜像 `tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261012`，连接 `/home/docker-test/docker.sock`：
+将以下脚本保存为 `run_950_PR.sh`。使用镜像 `tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261026`，连接 `/home/docker-test/docker.sock`：
 
 ```bash
 #!/usr/bin/env bash
@@ -117,8 +117,8 @@ set -euo pipefail
 
 export DOCKER_HOST=unix:///home/docker-test/docker.sock
 
-IMAGE="tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261012"
-CONTAINER_NAME="tx_hy_tenpu9.2.0_20261012"
+IMAGE="tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261026"
+CONTAINER_NAME="tx_hy_tenpu9.2.0_20261026"
 
 # 补充当前可见的 NPU 计算设备
 NPU_ARGS=()
@@ -138,8 +138,10 @@ docker run --name "$CONTAINER_NAME" \
     --device=/dev/davinci_manager \
     --device=/dev/hisi_hdc \
     --device=/dev/devmm_svm \
+    --device=/dev/infiniband \
     "${NPU_ARGS[@]}" \
     --entrypoint=bash \
+    -v /etc/libibverbs.d:/etc/libibverbs.d \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
     -v /usr/local/dcmi:/usr/local/dcmi \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
@@ -185,7 +187,7 @@ echo "进入容器：docker exec -it $CONTAINER_NAME bash"
 ```bash
 bash run_950_PR.sh
 export DOCKER_HOST=unix:///home/docker-test/docker.sock
-docker exec -it tx_hy_tenpu9.2.0_20261012 bash
+docker exec -it tx_hy_tenpu9.2.0_20261026 bash
 ```
 
 `--ipc=host` 下共享内存容量以 daemon 所在环境为准，可在容器内执行 `df -h /dev/shm` 查看。脚本中 `/apdcephfs_jn2` 挂载保留一次。
