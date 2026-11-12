@@ -192,6 +192,61 @@ docker exec -it tx_hy_tenpu9.2.0_20261026 bash
 
 `--ipc=host` 下共享内存容量以 daemon 所在环境为准，可在容器内执行 `df -h /dev/shm` 查看。脚本中 `/apdcephfs_jn2` 挂载保留一次。
 
+## 950DT 容器启动参考
+
+以下为 950DT 的 16 卡启动命令，镜像为 `tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261104_v2`。执行前确认目标机器存在命令中列出的设备节点、配置文件和挂载目录。
+
+```bash
+docker run --runtime=runc -u root -it -d --name tx_hy_tenpu --net=host --privileged=true --shm-size=20g \
+    --device=/dev/davinci_manager --device=/dev/hisi_hdc --device=/dev/ummu --device=/dev/uburma \
+    --device=/dev/davinci0 \
+    --device=/dev/davinci1 \
+    --device=/dev/davinci2 \
+    --device=/dev/davinci3 \
+    --device=/dev/davinci4 \
+    --device=/dev/davinci5 \
+    --device=/dev/davinci6 \
+    --device=/dev/davinci7 \
+    --device=/dev/davinci8 \
+    --device=/dev/davinci9 \
+    --device=/dev/davinci10 \
+    --device=/dev/davinci11 \
+    --device=/dev/davinci12 \
+    --device=/dev/davinci13 \
+    --device=/dev/davinci14 \
+    --device=/dev/davinci15 \
+    -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -v /usr/local/Ascend/firmware:/usr/local/Ascend/firmware \
+    -v /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi \
+    -v /usr/local/sbin:/usr/local/sbin \
+    -v /usr/local/dcmi:/usr/local/dcmi \
+    -v /var/log/npu/:/usr/slog \
+    -v /etc/hccl_rootinfo.json:/etc/hccl_rootinfo.json \
+    -v /etc/hixlep:/etc/hixlep \
+    -v /etc/atlas_topo_galaxy.json:/etc/atlas_topo_galaxy.json \
+    -v /etc/ascend_install.info:/etc/ascend_install.info \
+    -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+    -v /root/host:/root/host \
+    -v /mnt:/mnt \
+    -v /home/:/home/ \
+    -v /data/:/data/ \
+    -v /taijifs_zwfy8:/taijifs_zwfy8 \
+    -v /taijifs_zwfy:/taijifs_zwfy \
+    -v /taijifs_zwfy8:/apdcephfs_zwfy8 \
+    -v /taijifs_zwfy:/apdcephfs_zwfy \
+    -v /taijifs_cqtl31:/taijifs_cqtl31 \
+    tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261104_v2 \
+    bash
+```
+
+进入容器：
+
+```bash
+docker exec -it tx_hy_tenpu bash
+```
+
+该参考命令使用 `runc`，映射 `/dev/ummu`、`/dev/uburma` 和 16 个 NPU 设备，并挂载驱动、固件、HCCL/拓扑配置及共享目录。按命令保留独立 IPC 设置和 `--shm-size=20g`，不添加 950-PR 示例中的 `--ipc=host`。重复的 `/usr/local/sbin/npu-smi` 挂载仅保留一次。
+
 ## 启动与真机检查
 
 优先使用目标环境已经验证可用的 Ascend 容器启动方式。下面是常见设备节点的**单卡示例**；先确认目标机存在这些节点。950 的实际设备节点、宿主驱动路径与运行时挂载要求，以该机器的驱动部署为准。
