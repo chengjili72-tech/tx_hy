@@ -194,10 +194,13 @@ docker exec -it tx_hy_tenpu9.2.0_20261026 bash
 
 ## 950DT 容器启动参考
 
+**2026-11-13 更新：** 新版 950DT（16 卡）**Docker / ctr** 镜像启动及查询命令统一整理在 [950DT 容器使用说明](docs/950DT_container_usage.md)。所有命令均为示例，须按目标机器环境调整。下方旧镜像示例保留以便追溯，已移除固定 20G 共享内存设置。
+
+
 以下为 950DT 的 16 卡启动命令，镜像为 `tx_hy_tenpu:9.2.0_py313_torch2.10.0_20261104_v2`。执行前确认目标机器存在命令中列出的设备节点、配置文件和挂载目录。
 
 ```bash
-docker run --runtime=runc -u root -it -d --name tx_hy_tenpu --net=host --privileged=true --shm-size=20g \
+docker run --runtime=runc -u root -it -d --name tx_hy_tenpu --net=host --privileged=true \
     --device=/dev/davinci_manager --device=/dev/hisi_hdc --device=/dev/ummu --device=/dev/uburma \
     --device=/dev/davinci0 \
     --device=/dev/davinci1 \
@@ -245,7 +248,7 @@ docker run --runtime=runc -u root -it -d --name tx_hy_tenpu --net=host --privile
 docker exec -it tx_hy_tenpu bash
 ```
 
-该参考命令使用 `runc`，映射 `/dev/ummu`、`/dev/uburma` 和 16 个 NPU 设备，并挂载驱动、固件、HCCL/拓扑配置及共享目录。按命令保留独立 IPC 设置和 `--shm-size=20g`，不添加 950-PR 示例中的 `--ipc=host`。重复的 `/usr/local/sbin/npu-smi` 挂载仅保留一次。
+该参考命令使用 `runc`，映射 `/dev/ummu`、`/dev/uburma` 和 16 个 NPU 设备，并挂载驱动、固件、HCCL/拓扑配置及共享目录。该旧版参考命令未指定 `--ipc=host`，也不再固定 `--shm-size`；共享内存容量请在容器内使用 `df -h /dev/shm` 检查。重复的 `/usr/local/sbin/npu-smi` 挂载仅保留一次。
 
 ## 启动与真机检查
 
